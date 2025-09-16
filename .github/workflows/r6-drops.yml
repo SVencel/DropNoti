@@ -2,14 +2,21 @@ name: R6 Drops Watcher
 
 on:
   schedule:
-    - cron: "0 */4 * * *"       # every 4 hours (UTC)
-  workflow_dispatch:            # lets you run it manually from the UI
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+# 👇 Allow pushing the updated state file back to the repo
+permissions:
+  contents: write
 
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 👇 ensures the default token is set up for push
+          persist-credentials: true
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -19,7 +26,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python r6_twitch_drops_notifier.py
-      - name: Persist state file (optional)
+      - name: Persist state file
         if: always()
         run: |
           git config user.name "r6-bot"
