@@ -1,0 +1,33 @@
+name: R6 Drops Badge Watcher
+
+on:
+  schedule:
+    - cron: "0 7,19 * * *"   # run every day at 07:00 and 19:00 UTC (~9 AM & 9 PM Budapest time)
+  workflow_dispatch:          # allows you to run manually from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          pip install playwright requests
+          python -m playwright install --with-deps
+      - name: Run watcher
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python r6_drops_badge_watcher.py
+      - name: Persist state
+        run: |
+          git config user.name "r6-bot"
+          git config user.email "r6-bot@users.noreply.github.com"
+          git add .r6_drops_badge_seen.json || true
+          git commit -m "state update" || true
+          git push || true
