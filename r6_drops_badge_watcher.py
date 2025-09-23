@@ -1,22 +1,29 @@
 #!/usr/bin/env python3
 import os, time, re, json, pathlib, hashlib
-from typing import List
+from typing import List, Tuple
 import requests
 from playwright.sync_api import sync_playwright, TimeoutError as TE
 
 CATEGORY_URL = "https://www.twitch.tv/directory/category/tom-clancys-rainbow-six-siege?sort=VIEWER_COUNT"
 
-# Optional Telegram env vars
+# Telegram (optional)
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
+
+# State (to avoid duplicate alerts across runs if you want)
 STATE_FILE = pathlib.Path(".r6_drops_badge_seen.json")
 
-# Some UIs show “Drops”, others “Drops Enabled” / localized strings.
-DROPS_TEXT = re.compile(r"\bdrops\b", re.I)
+# Badge selectors: we prefer explicit “Drops” badge elements over generic text
+BADGE_LOCATORS = [
+    "[data-test-selector*='Drops']",                      # common internal selector
+    "[aria-label*='Drops' i]",                            # badge with aria-label
+    "img[alt*='Drops' i]",                                # image alt
+    "span:has-text('Drops')", "div:has-text('Drops')"     # text fallback
+]
 
 def tg_send(text: str):
     if not BOT_TOKEN or not CHAT_ID:
-        print(text)  # just print if Telegram not configured
+        print(text)
         return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     r = requests.post(url, json={"chat_id": CHAT_ID, "text": text, "disable_web_page_preview": True}, timeout=20)
@@ -25,25 +32,57 @@ def tg_send(text: str):
     except Exception as e:
         print("Telegram error:", e, getattr(r, "text", ""))
 
-def gentle_scroll(page, loops=12, dy=1800, delay=0.2):
+def gentle_scroll(page, loops=14, dy=2000, delay=0.2):
     for _ in range(loops):
         page.mouse.wheel(0, dy)
         time.sleep(delay)
 
-def load_seen() -> set:
+def load_state():
     if STATE_FILE.exists():
         try:
-            return set(json.loads(STATE_FILE.read_text(encoding="utf-8")).get("seen", []))
+            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
-    return set()
+    return {"last_digest": ""}
 
-def save_seen(seen: set):
-    STATE_FILE.write_text(json.dumps({"seen": list(seen)}, ensure_ascii=False, indent=2), encoding="utf-8")
+def save_state(state):
+    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def find_stream_cards(page):
+    # Twitch stream cards are anchors linking to /<channel> (sometimes absolute)
+    return page.locator("a[href^='/'], a[href^='https://www.twitch.tv/']")
+
+def card_has_drops(card) -> bool:
+    # Look for the badge *inside* the card using robust selectors
+    for sel in BADGE_LOCATORS:
+        try:
+            loc = card.locator(sel)
+            if loc.count() > 0 and loc.first.is_visible():
+                return True
+        except Exception:
+            continue
+    # Last fallback: tiny text snapshot (avoid if possible)
+    try:
+        txt = card.inner_text(timeout=500)
+        if txt and re.search(r"\bdrops\b", txt, re.I):
+            return True
+    except Exception:
+        pass
+    return False
+
+def normalize_href(href: str) -> str:
+    if not href:
+        return ""
+    if href.startswith("/"):
+        href = "https://www.twitch.tv" + href
+    return href.split("?")[0].rstrip("/")
+
+def channel_from_href(href: str) -> str:
+    h = href.rstrip("/").split("/")
+    return h[-1] if h else href
 
 def main():
-    seen = load_seen()
-    messages: List[str] = []
+    state = load_state()
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
@@ -59,52 +98,62 @@ def main():
         except TE:
             pass
 
-        # Load many cards
+        # Load a good number of cards
         gentle_scroll(page, loops=15)
 
-        # Each stream card is an <a> to /<channel>, with various badges inside.
-        cards = page.locator("a[href^='https://www.twitch.tv/'], a[href^='/']").filter(has_text=re.compile(r".+"))
+        cards = find_stream_cards(page)
         count = cards.count()
 
-        drops_found = []
+        drops_streams: List[Tuple[str, str]] = []  # (channel_link, channel_name)
         for i in range(count):
             card = cards.nth(i)
             try:
-                # Read a small text snapshot of the card
-                txt = card.inner_text(timeout=1000)
+                href = normalize_href(card.get_attribute("href") or "")
             except Exception:
                 continue
-            if not txt:
+            if not href or href.count("/") < 3:  # skip non-channel links like /directory/...
+                continue
+            # Only consider links that look like /<channel>
+            if not re.match(r"^https://www\.twitch\.tv/[^/]+$", href, re.I):
                 continue
 
-            if DROPS_TEXT.search(txt):
-                href = card.get_attribute("href") or ""
-                if href.startswith("/"):
-                    href = "https://www.twitch.tv" + href
-                # Build a compact message and dedupe key
-                key = hashlib.sha256(href.encode("utf-8")).hexdigest()
-                if key in seen:
-                    continue
-                drops_found.append((href, txt))
-                seen.add(key)
+            if card_has_drops(card):
+                chan = channel_from_href(href)
+                drops_streams.append((href, chan))
 
         browser.close()
 
-    if drops_found:
-        for href, txt in drops_found[:10]:  # cap messages
-            # Extract channel name & a short snippet
-            channel = href.split("/")[-1]
-            snippet = " ".join(txt.split())[:160]
-            parts = [
-                "🟣 R6 streams show **Drops Enabled**",
-                f"Channel: {channel}",
-                f"Link: {href}",
-                f"Snippet: {snippet}"
-            ]
-            tg_send("\n".join(parts))
-        save_seen(seen)
-    else:
+    # De-duplicate by channel
+    unique = {}
+    for href, chan in drops_streams:
+        unique[chan.lower()] = href
+    channels = sorted(unique.keys())  # stable order
+    total = len(channels)
+
+    if total == 0:
         print("No R6 streams with a Drops badge right now.")
+        return
+
+    # Create a digest (so we can avoid re-sending unchanged info if you want)
+    digest = "|".join(channels)
+    if digest == state.get("last_digest", ""):
+        print("Drops still active, but set of channels unchanged — not notifying.")
+        return
+
+    # Build one compact message
+    sample = channels[:5]
+    remaining = total - len(sample)
+    parts = [
+        f"🟣 R6 Drops live on {total} stream(s)",
+        "Examples: " + ", ".join(sample) + (f" +{remaining} more" if remaining > 0 else ""),
+        "Category: https://www.twitch.tv/directory/category/tom-clancys-rainbow-six-siege?sort=VIEWER_COUNT"
+    ]
+    msg = "\n".join(parts)
+    tg_send(msg)
+
+    # Save digest so the next run won’t re-send the same set
+    state["last_digest"] = digest
+    save_state(state)
 
 if __name__ == "__main__":
     main()
