@@ -1,0 +1,43 @@
+name: R6 Drops Telegram Notify
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - latest_r6.json   # only run when this file changes
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Read current JSON (count + titles)
+      - name: Read current JSON
+        run: |
+          jq -r '.count' latest_r6.json > count.txt
+          jq -r '.cards[].title' latest_r6.json | sort -u > titles.txt
+
+      # Read previous JSON from the prior commit (if it existed)
+      - name: Read previous JSON
+        run: |
+          git show HEAD^:latest_r6.json > prev.json || echo '{}' > prev.json
+          jq -r '.cards[].title' prev.json 2>/dev/null | sort -u > prev_titles.txt || true
+
+      # Compute "new" titles since last push
+      - name: Compute new titles
+        id: diff
+        run: |
+          comm -13 prev_titles.txt titles.txt > new.txt || true
+          NEW=$(tr '\n' ',' < new.txt | sed 's/,$//')
+          if [ -z "$NEW" ]; then NEW_MSG="No new R6 campaigns."; else NEW_MSG="New: $NEW"; fi
+          echo "NEW_MSG=$NEW_MSG" >> $GITHUB_ENV
+          echo "COUNT=$(cat count.txt)" >> $GITHUB_ENV
+
+      # Send Telegram message using your repo secrets
+      - name: Send Telegram
+        run: |
+          TEXT="R6 Drops: ${COUNT}. ${NEW_MSG}"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="$TEXT"
