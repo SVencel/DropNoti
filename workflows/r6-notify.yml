@@ -1,10 +1,9 @@
-name: R6 Drops Telegram Notify
+name: R6 Drops Telegram Notify (daily)
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - latest_r6.json   # only run when this file changes
+  schedule:
+    # Runs every day at 07:00 UTC (≈08:00 CET / 09:00 CEST)
+    - cron: "0 7 * * *"
 
 jobs:
   notify:
@@ -12,32 +11,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Read current JSON (count + titles)
-      - name: Read current JSON
-        run: |
-          jq -r '.count' latest_r6.json > count.txt
-          jq -r '.cards[].title' latest_r6.json | sort -u > titles.txt
+      - name: Ensure jq is available
+        run: jq --version
 
-      # Read previous JSON from the prior commit (if it existed)
-      - name: Read previous JSON
+      - name: Read latest JSON
         run: |
-          git show HEAD^:latest_r6.json > prev.json || echo '{}' > prev.json
-          jq -r '.cards[].title' prev.json 2>/dev/null | sort -u > prev_titles.txt || true
+          if [ ! -f latest_r6.json ]; then
+            echo '{}' > latest_r6.json
+          fi
+          jq -r '.count // 0' latest_r6.json > count.txt
+          jq -r '.cards[].title // empty' latest_r6.json | sort -u > titles.txt
 
-      # Compute "new" titles since last push
-      - name: Compute new titles
-        id: diff
+      - name: Build message
+        id: msg
         run: |
-          comm -13 prev_titles.txt titles.txt > new.txt || true
-          NEW=$(tr '\n' ',' < new.txt | sed 's/,$//')
-          if [ -z "$NEW" ]; then NEW_MSG="No new R6 campaigns."; else NEW_MSG="New: $NEW"; fi
-          echo "NEW_MSG=$NEW_MSG" >> $GITHUB_ENV
-          echo "COUNT=$(cat count.txt)" >> $GITHUB_ENV
+          COUNT=$(cat count.txt)
+          if [ "$COUNT" -eq 0 ]; then
+            echo "TEXT=No Rainbow Six drops today." >> $GITHUB_OUTPUT
+          else
+            LIST=$(head -n 10 titles.txt | sed 's/^/• /')
+            EXTRA=$(wc -l < titles.txt)
+            if [ "$EXTRA" -gt 10 ]; then
+              EXTRA_MSG="… and $((EXTRA-10)) more"
+            else
+              EXTRA_MSG=""
+            fi
+            printf "TEXT=R6 Drops: %s campaigns%%0A%%0A%s%%0A%s\n" "$COUNT" "$LIST" "$EXTRA_MSG" >> $GITHUB_OUTPUT
+          fi
 
-      # Send Telegram message using your repo secrets
       - name: Send Telegram
         run: |
-          TEXT="R6 Drops: ${COUNT}. ${NEW_MSG}"
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d text="$TEXT"
+            -d text="${{ steps.msg.outputs.TEXT }}" \
+            -d disable_web_page_preview=true
