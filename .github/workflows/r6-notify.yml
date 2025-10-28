@@ -2,9 +2,8 @@ name: R6 Drops Telegram Notify
 
 on:
   schedule:
-    # 07:00 UTC (≈ 08:00 CET right now). Add a second run at 12:00 UTC for testing today.
-    - cron: "0 7,12 * * *"
-  workflow_dispatch: {}   # lets you trigger it manually
+    - cron: "0 7,12 * * *"   # adjust as you like (UTC)
+  workflow_dispatch: {}
 
 jobs:
   notify:
@@ -18,22 +17,36 @@ jobs:
             echo '{}' > latest_r6.json
           fi
 
-      - name: Build message
+      - name: Build message (with timeframes)
         id: msg
         run: |
           COUNT=$(jq -r '.count // 0' latest_r6.json)
-          TITLES=$(jq -r '.cards[].title // empty' latest_r6.json | sort -u)
-          if [ "$COUNT" -eq 0 ]; then
-            echo "TEXT=No Rainbow Six drops today." >> $GITHUB_OUTPUT
+          SCRAPED=$(jq -r '.scraped_at // empty' latest_r6.json)
+          if [ -z "$SCRAPED" ]; then
+            SCRAPED="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          fi
+
+          # Build "Title — Timeframe" lines, unique and trimmed
+          jq -r '.cards[] | "\(.title // "Untitled") — \(.timeframe // "Time N/A")"' latest_r6.json \
+          | sed 's/[[:space:]]\{1,\}/ /g' \
+          | sed 's/ —  — / — Time N\/A/' \
+          | sort -u > lines.txt
+
+          # Prepare up to 8 entries
+          PREVIEW=$(head -n 8 lines.txt | sed 's/^/• /')
+          TOTAL=$(wc -l < lines.txt)
+          if [ "$TOTAL" -gt 8 ]; then
+            EXTRA_MSG="… and $((TOTAL-8)) more"
           else
-            LIST=$(echo "$TITLES" | head -n 10 | sed 's/^/• /')
-            EXTRA=$(echo "$TITLES" | wc -l)
-            if [ "$EXTRA" -gt 10 ]; then
-              EXTRA_MSG="… and $((EXTRA-10)) more"
-            else
-              EXTRA_MSG=""
-            fi
-            printf "TEXT=R6 Drops: %s campaigns%%0A%%0A%s%%0A%s\n" "$COUNT" "$LIST" "$EXTRA_MSG" >> $GITHUB_OUTPUT
+            EXTRA_MSG=""
+          fi
+
+          if [ "$COUNT" -eq 0 ]; then
+            printf "TEXT=No Rainbow Six drops today%%0Aas of %s (UTC)\n" "$SCRAPED" >> $GITHUB_OUTPUT
+          else
+            # Convert newlines to %0A for Telegram
+            PREVIEW_ENC=$(printf "%s" "$PREVIEW" | sed ':a;N;$!ba;s/\n/%0A/g')
+            printf "TEXT=R6 Drops: %s campaigns%%0Aas of %s (UTC)%%0A%%0A%s%%0A%s\n" "$COUNT" "$SCRAPED" "$PREVIEW_ENC" "$EXTRA_MSG" >> $GITHUB_OUTPUT
           fi
 
       - name: Send Telegram
