@@ -1,9 +1,10 @@
-name: R6 Drops Telegram Notify (daily)
+name: R6 Drops Telegram Notify
 
 on:
   schedule:
-    # Runs every day at 07:00 UTC (≈08:00 CET / 09:00 CEST)
-    - cron: "0 7 * * *"
+    # 07:00 UTC (≈ 08:00 CET right now). Add a second run at 12:00 UTC for testing today.
+    - cron: "0 7,12 * * *"
+  workflow_dispatch: {}   # lets you trigger it manually
 
 jobs:
   notify:
@@ -11,26 +12,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Ensure jq is available
-        run: jq --version
-
-      - name: Read latest JSON
+      - name: Ensure JSON exists
         run: |
           if [ ! -f latest_r6.json ]; then
             echo '{}' > latest_r6.json
           fi
-          jq -r '.count // 0' latest_r6.json > count.txt
-          jq -r '.cards[].title // empty' latest_r6.json | sort -u > titles.txt
 
       - name: Build message
         id: msg
         run: |
-          COUNT=$(cat count.txt)
+          COUNT=$(jq -r '.count // 0' latest_r6.json)
+          TITLES=$(jq -r '.cards[].title // empty' latest_r6.json | sort -u)
           if [ "$COUNT" -eq 0 ]; then
             echo "TEXT=No Rainbow Six drops today." >> $GITHUB_OUTPUT
           else
-            LIST=$(head -n 10 titles.txt | sed 's/^/• /')
-            EXTRA=$(wc -l < titles.txt)
+            LIST=$(echo "$TITLES" | head -n 10 | sed 's/^/• /')
+            EXTRA=$(echo "$TITLES" | wc -l)
             if [ "$EXTRA" -gt 10 ]; then
               EXTRA_MSG="… and $((EXTRA-10)) more"
             else
