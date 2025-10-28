@@ -17,7 +17,7 @@ jobs:
             echo '{}' > latest_r6.json
           fi
 
-           - name: Build message (with timeframes)
+      - name: Build message (with timeframes)
         id: msg
         run: |
           COUNT=$(jq -r '.count // 0' latest_r6.json)
@@ -51,7 +51,6 @@ jobs:
             PREVIEW_ENC=$(printf "%s" "$PREVIEW" | sed ':a;N;$!ba;s/\n/%0A/g')
             printf "TEXT=R6 Drops: %s campaigns%%0Aas of %s (UTC)%%0A%%0A%s%%0A%s\n" "$COUNT" "$ASOF" "$PREVIEW_ENC" "$EXTRA_MSG" >> $GITHUB_OUTPUT
           fi
-
 
       - name: Send Telegram
         run: |
