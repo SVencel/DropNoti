@@ -17,13 +17,17 @@ jobs:
             echo '{}' > latest_r6.json
           fi
 
-      - name: Build message (with timeframes)
+           - name: Build message (with timeframes)
         id: msg
         run: |
           COUNT=$(jq -r '.count // 0' latest_r6.json)
           SCRAPED=$(jq -r '.scraped_at // empty' latest_r6.json)
-          if [ -z "$SCRAPED" ]; then
-            SCRAPED="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          # Format "as of" as MM-DD (UTC). Fallback to today if missing.
+          if [ -n "$SCRAPED" ]; then
+            ASOF=$(date -u -d "$SCRAPED" +"%m-%d" 2>/dev/null || echo "${SCRAPED:5:5}")
+          else
+            ASOF=$(date -u +"%m-%d")
           fi
 
           # Build "Title — Timeframe" lines, unique and trimmed
@@ -42,12 +46,12 @@ jobs:
           fi
 
           if [ "$COUNT" -eq 0 ]; then
-            printf "TEXT=No Rainbow Six drops today%%0Aas of %s (UTC)\n" "$SCRAPED" >> $GITHUB_OUTPUT
+            printf "TEXT=No Rainbow Six drops today%%0Aas of %s (UTC)\n" "$ASOF" >> $GITHUB_OUTPUT
           else
-            # Convert newlines to %0A for Telegram
             PREVIEW_ENC=$(printf "%s" "$PREVIEW" | sed ':a;N;$!ba;s/\n/%0A/g')
-            printf "TEXT=R6 Drops: %s campaigns%%0Aas of %s (UTC)%%0A%%0A%s%%0A%s\n" "$COUNT" "$SCRAPED" "$PREVIEW_ENC" "$EXTRA_MSG" >> $GITHUB_OUTPUT
+            printf "TEXT=R6 Drops: %s campaigns%%0Aas of %s (UTC)%%0A%%0A%s%%0A%s\n" "$COUNT" "$ASOF" "$PREVIEW_ENC" "$EXTRA_MSG" >> $GITHUB_OUTPUT
           fi
+
 
       - name: Send Telegram
         run: |
