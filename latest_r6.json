@@ -1,5 +1,24 @@
 {
-  "scraped_at": "2025-11-07T08:47:37.520294Z",
-  "count": 0,
-  "cards": []
+  "scraped_at": "2025-11-09T15:38:09.312062Z",
+  "count": 2,
+  "cards": [
+    {
+      "title": "Tom Clancy's Rainbow Six Siege X",
+      "publisher": "Ubisoft",
+      "image_alt": "Tom Clancy's Rainbow Six Siege X",
+      "image_src": "https://static-cdn.jtvnw.net/ttv-boxart/460630-120x160.jpg",
+      "timeframe": "Sun, Nov 9, 2:15 PM - Mon, Nov 10, 2:59 AM GMT+1",
+      "section": "Open Drop Campaigns",
+      "source": "accordion_button"
+    },
+    {
+      "title": "Tom Clancy's Rainbow Six Siege X",
+      "publisher": "Ubisoft",
+      "image_alt": "Tom Clancy's Rainbow Six Siege X",
+      "image_src": "https://static-cdn.jtvnw.net/ttv-boxart/460630-120x160.jpg",
+      "timeframe": "Sat, Nov 8, 1:00 PM - Sun, Nov 9, 2:59 AM GMT+1",
+      "section": "Closed Drop Campaigns",
+      "source": "accordion_button"
+    }
+  ]
 }
