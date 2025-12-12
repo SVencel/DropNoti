@@ -1,5 +1,5 @@
 {
-  "scraped_at": "2025-12-09T08:26:59.819456Z",
+  "scraped_at": "2025-12-12T11:27:35.380634Z",
   "count": 2,
   "cards": [
     {
@@ -7,7 +7,7 @@
       "publisher": "Twitch Gaming",
       "image_alt": "Tom Clancy's Rainbow Six Siege X",
       "image_src": "https://static-cdn.jtvnw.net/ttv-boxart/460630-120x160.jpg",
-      "timeframe": "Mon, Dec 1, 8:00 PM - Thu, Jan 1, 8:59 AM GMT+1",
+      "timeframe": "Mon, Dec 1, 8:00 PM - Fri, Dec 12, 1:59 PM GMT+1",
       "section": "Open Drop Campaigns",
       "source": "accordion_button"
     },
@@ -16,7 +16,7 @@
       "publisher": "Ubisoft",
       "image_alt": "Tom Clancy's Rainbow Six Siege X",
       "image_src": "https://static-cdn.jtvnw.net/ttv-boxart/460630-120x160.jpg",
-      "timeframe": "Tue, Dec 2, 6:00 PM - Mon, Dec 8, 5:59 PM GMT+1",
+      "timeframe": "Thu, Dec 11, 3:00 AM - Thu, Dec 11, 12:59 PM GMT+1",
       "section": "Closed Drop Campaigns",
       "source": "accordion_button"
     }
